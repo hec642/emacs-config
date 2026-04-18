@@ -1,0 +1,38 @@
+# Compiled / cache
+*.elc
+*~
+.#*
+\#*\#
+eln-cache/
+auto-save-list/
+transient/
+tree-sitter/
+url/
+
+# straight.el build artifacts
+straight/build/
+straight/build-cache.el
+straight/modified/
+straight/repos/
+
+# Session / state
+.cache/
+recentf
+places
+bookmarks
+history
+*.desktop
+*.desktop.lock
+projectile-bookmarks.eld
+projectile.cache
+session.*
+
+# Private overrides — never commit these
+.env
+secrets.el
+private.el
+local.el
+
+# OS
+.DS_Store
+Thumbs.db
