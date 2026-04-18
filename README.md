@@ -1,22 +1,20 @@
 # emacs-config
 
-Personal GNU Emacs configuration, org-mode centric, built on
+Personal GNU Emacs configuration built on
 [`straight.el`](https://github.com/radian-software/straight.el) and
 [`use-package`](https://github.com/jwiegley/use-package).
 
 ## Features
 
 - **Knowledge management** — `org-mode`, `org-roam`, `org-roam-ui`,
-  `citar`/`bibtex` + `org-cite`, Anki integration.
+  `citar`/`bibtex` + `org-cite`, Anki.
 - **Document authoring** — custom LaTeX classes (article, book, Beamer),
-  `ox-reveal` for Reveal.js, Quarto, Markdown, Graphviz, `org-babel`
-  (Elisp, LaTeX, CSS, ...).
+  `ox-reveal`, Quarto, Markdown, Graphviz, `org-babel`.
 - **AI assistants** — `gptel`, GitHub Copilot,
   [`claude-code-ide`](https://github.com/manzaltu/claude-code-ide.el),
   multiple MCP servers (filesystem, GitHub, Graphlit, Qdrant).
 - **Editing** — `evil`, `vertico`, `corfu`, `cape`, PDF Tools, Magit.
-- **Terminals & files** — `vterm`, `eshell` with a custom prompt, `dired`
-  with extensions.
+- **Terminals & files** — `vterm`, `eshell`, `dired`. 
 - **UI** — Modus themes, JetBrains Mono, `nerd-icons`, variable-pitch
   prose, per-mode cursor colors.
 - **Performance** — native compilation, GC tuning, deferred file-handler
@@ -27,9 +25,9 @@ Personal GNU Emacs configuration, org-mode centric, built on
 | File | Purpose |
 |------|---------|
 | `early-init.el` | Runs before package init — GC, frame defaults, native-comp. |
-| `init.el` | Entry point; loads `config.org` (or `config.el`). |
+| `init.el` | Entry point; loads `config.el`. |
 | `config.el` | Main configuration (all `use-package` declarations). |
-| `custom.el` | Values written by Emacs's Customize interface. |
+| `custom.el` | Emacs's customization values. |
 
 ## Install
 
