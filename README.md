@@ -54,7 +54,7 @@ The config ships with placeholders. Edit `config.el` or set env vars:
 | `Your Name` | `user-full-name`, LaTeX `\author{}` templates | set `USER_FULL_NAME` env var, or edit literal |
 | `your-email@example.com` | `user-mail-address` | set `EMAIL` env var, or edit literal |
 | `Your Institution` | Beamer `\institute{}` template | edit literal |
-| `~/pics/backgrounds/logo.png` | Beamer logo graphic | drop your own image there |
+| `~/path/to/logo.png` | Beamer logo graphic | drop your own image there |
 | `~/reveal.js/` | `org-reveal-root` | clone reveal.js to that path |
 
 ## License
