@@ -4,6 +4,9 @@ Personal GNU Emacs configuration built on
 [`straight.el`](https://github.com/radian-software/straight.el) and
 [`use-package`](https://github.com/jwiegley/use-package).
 
+You can freely copy and download parts or all of these elisp files.
+Happy hacking!
+
 ## Features
 
 - **Knowledge management** — `org-mode`, `org-roam`, `org-roam-ui`,
