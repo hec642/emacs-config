@@ -39,7 +39,7 @@ Happy hacking!
 mv ~/.emacs.d ~/.emacs.d.bak 2>/dev/null
 
 # Clone
-git clone git@github.com:hec642/emacs-config.git ~/.emacs.d
+git clone git@github.com:your-github-user/emacs-config.git ~/.emacs.d
 
 # Start Emacs — straight.el will bootstrap itself and pull all packages
 emacs

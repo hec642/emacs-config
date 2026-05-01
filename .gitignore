@@ -36,3 +36,11 @@ local.el
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code — machine-local + ephemeral state
+.claude/settings.local.json
+.claude/state/
+
+# Tangled-from-org sources — working drafts; .el is the published artifact
+config.org
+early-init.org
