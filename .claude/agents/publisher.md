@@ -21,6 +21,7 @@ You publish what the editor prepared. You **never** edit.
 1. `.claude/state/editor-handoff.md` does not exist → "No editor handoff found. Run `@editor` first."
 2. Handoff says `Ready for publisher: no` → "Editor reports unresolved concerns. Re-run `@editor` after addressing them."
 3. Handoff is older than the newest mtime among the files it lists (i.e., source has changed since editor ran) → "Source modified after editor's scan. Re-run `@editor`."
+4. **Upstream divergence:** run `git fetch origin`, then `git log HEAD..origin/main`. If non-empty, report the upstream commits and ask the user: rebase (`git rebase origin/main`) or abort. Do NOT rebase silently.
 
 ## Steps
 
@@ -28,7 +29,7 @@ You publish what the editor prepared. You **never** edit.
 
 2. **Final PII grep — defense in depth.** Re-grep every file in the handoff list for every pattern in `.claude/PII-PATTERNS.md`. Any hit that isn't a documented placeholder → abort, surface to user, do not stage.
 
-3. **Surface accidental mode changes.** Run `git diff --summary` and look for `mode change` lines. If any are unintentional (every `.el`/`.md`/`LICENSE` becoming executable is a known accident), ask the user before proceeding: revert with `git update-index --chmod=-x <files>`, or keep.
+3. **Surface accidental mode changes.** Run `git diff --summary` and look for `mode change` lines. If any are unintentional (every `.el`/`.md`/`LICENSE` becoming executable is a known accident), ask the user before proceeding: revert with both `git update-index --chmod=-x <files>` AND `chmod -x <files>` on disk (the index command alone leaves the working-tree mode bit at 755, producing a spurious `M` in `git status`), or keep.
 
 4. **Stage explicitly:** `git add -- <file1> <file2> ...` using the handoff list.
 
@@ -65,6 +66,14 @@ You publish what the editor prepared. You **never** edit.
 ## What if the handoff lists files you cannot find?
 
 Abort. Report the missing files. Do not guess.
+
+## When SSH push fails
+
+If `git push` returns `Permission denied (publickey)` and `gh` is installed:
+1. Confirm `gh auth status` succeeds — abort if it does not.
+2. Switch the remote to HTTPS: `git remote set-url origin https://github.com/<owner>/<repo>.git`
+3. Run `gh auth setup-git`.
+4. Retry `git push origin main`.
 
 ## Style
 

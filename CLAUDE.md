@@ -61,3 +61,5 @@ Then mark those lines `[addressed]` rather than deleting them — preserves the 
 - "Publish my recent changes" → orchestrator invokes `@editor` first; on `ready: yes`, invokes `@publisher`; publisher pauses for push approval.
 - "Just scan for PII" → `@editor` only.
 - "I already cleaned the files; push them" → `@publisher` will still demand a handoff. Run `@editor` first (it's idempotent and fast on clean files).
+
+Note: After editing or adding files in `.claude/agents/`, restart your Claude Code session before invoking the new agent.
