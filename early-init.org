@@ -1,0 +1,263 @@
+#+TITLE: My early initialization file
+#+FILETAGS: EARLY_INIT GARBAGE NATIVE-COMPILE FRAME GRAPHICAL-USER-INTERFACE  MAJOR_MODE THEME PACKAGES
+#+PROPERTY: header-args:emacs-lisp :exports code :results silent :tangle "~/.emacs.d/early-init.el"
+
+* Header
+
+** Filename, Commentary, Code, startup
+:PROPERTIES:
+:ID:       f6dd04a8-a554-46ca-9305-815e80c36d67
+:END:
+
+- Disable =package.el= entirely; =straight.el= handles all package management.
+- Trim OS-irrelevant command-line options to slightly reduce startup work.
+- Set UTF-8 as the default coding system, then undo the side-effect of
+  =set-language-environment= that re-enables =default-input-method=.
+- Suppress every startup banner/echo message.
+- Drop GUI chrome (menu/tool/scroll bars); =init.el= can re-enable any of them.
+
+#+begin_src emacs-lisp
+;;; early-init.el --- early init file -*- lexical-binding: t; -*-
+;; Time-stamp: "Last changed on 20260330T2215"
+;;
+;;; Commentary:
+;; The file loaded before the init file that starts it all.
+;;
+;;; Code:
+;;---------------------------------------------------------------------
+;; Startup behavior & noise reduction
+;;---------------------------------------------------------------------
+;; Disable package.el entirely; straight.el handles everything
+(setq package-enable-at-startup nil
+      package-quickstart nil)
+
+;; Remove command line options that aren't relevant to the current OS; this
+;; results in slightly less processing at startup.
+(unless (eq system-type 'gnu/linux)
+  (setq command-line-x-option-alist nil))
+(unless (eq system-type 'darwin)
+  (setq command-line-ns-option-alist nil))
+
+(setq site-run-file nil)
+
+;; Set UTF-8 as the default coding system
+(set-language-environment "UTF-8")
+
+;; `set-language-environment' sets `default-input-method', which is unwanted.
+(setq default-input-method nil)
+
+;; Reduce rendering/line scan work by not rendering cursors or regions in
+;; non-focused windows.
+(setq-default cursor-in-non-selected-windows nil)
+
+(setq inhibit-default-init nil)
+
+;; Quiet startup
+(setq inhibit-startup-screen t
+      inhibit-startup-echo-area-message user-login-name
+      inhibit-startup-message t
+      inhibit-splash-screen t
+      inhibit-startup-buffer-menu t
+      initial-scratch-message "")
+
+;; Less visual noise: no menu/toolbar/scrollbar in GUI.
+;; Re-enable any of these later in init.el if desired.
+(menu-bar-mode -1)
+(tool-bar-mode -1)
+(scroll-bar-mode -1)
+#+end_src
+
+* Do not run site file; do not ring bell; load org path
+:PROPERTIES:
+:ID:       0d9d2b3e-21a6-4dd3-b5a1-240cdbb86fac
+:END:
+
+- Silence the bell on errors and the daemon's "client connected" banner.
+- Replace the built-in Org with the straight.el-managed checkout under
+  =straight/repos/org/lisp/=.
+
+#+begin_src emacs-lisp
+(setq ring-bell-function #'ignore
+      server-client-instructions nil)
+
+(add-to-list 'load-path
+             (expand-file-name "straight/repos/org/lisp/" user-emacs-directory))
+#+end_src
+
+* File handler and GC
+:PROPERTIES:
+:ID:       8649dad0-b1d2-4eee-9bde-5eda588fd6df
+:END:
+
+- Defer garbage collection during startup by raising =gc-cons-threshold= and
+  =gc-cons-percentage=. Saner values are restored from =config.org= after init.
+- Temporarily unset =file-name-handler-alist=: every file load consults the
+  handlers, but nothing in there is needed during startup.
+
+#+begin_src emacs-lisp
+(setq gc-cons-threshold most-positive-fixnum
+      gc-cons-percentage 1.5)
+
+(defvar my-file-name-handler-alist file-name-handler-alist)
+(setq file-name-handler-alist nil)
+
+(add-hook 'emacs-startup-hook
+          (lambda ()
+            (setq file-name-handler-alist my-file-name-handler-alist)))
+#+end_src
+
+* No byte compile warnings; maximum log message
+:PROPERTIES:
+:ID:       c3922d87-844a-4da6-aa3b-192a4d0299ab
+:END:
+
+- Silence byte-compile warnings.
+
+#+begin_src emacs-lisp
+(setq byte-compile-warnings nil)
+#+end_src
+
+* Native compilation settings
+:PROPERTIES:
+:ID:       d5398816-9195-497d-805e-e42bd00640b4
+:END:
+
+- Run native compilation asynchronously and silently.
+- Reserve 2 cores for the user; use the rest for parallel native-comp jobs.
+- Prune the eln cache of files that don't match the current Emacs version.
+- Redirect the eln cache to a config-local =eln-cache/= when it exists, via
+  =startup-redirect-eln-cache= (preferred over hand-setting
+  =native-comp-eln-load-path=).
+
+#+begin_src emacs-lisp
+(when (featurep 'native-compile)
+  (setq native-comp-async-report-warnings-errors 'silent
+        native-comp-jit-compilation t
+        native-comp-async-jobs-number (max 1 (- (num-processors) 2))
+        native-comp-speed 2
+        native-compile-prune-cache t
+        package-native-compile t)
+
+  (let ((eln-cache (expand-file-name "eln-cache/" user-emacs-directory)))
+    (when (file-directory-p eln-cache)
+      (startup-redirect-eln-cache eln-cache))))
+#+end_src
+
+* Dialog boxes, pixel scroll, prefer newer
+:PROPERTIES:
+:ID:       52b40470-5c47-4955-94cb-fd5e75e751bf
+:END:
+
+- Don't use system dialog boxes; keep everything inside the frame.
+- Enable =pixel-scroll-precision-mode= for smooth scrolling on modern
+  compositors. Activated directly here rather than via a hook.
+- Always prefer newer source over older =.elc= / =.eln=.
+
+#+begin_src emacs-lisp
+(setq use-dialog-box nil
+      use-file-dialog nil)
+
+(when (fboundp 'pixel-scroll-precision-mode)
+  (pixel-scroll-precision-mode 1))
+
+(setq load-prefer-newer t)
+#+end_src
+
+* GUI configuration
+:PROPERTIES:
+:ID:       998b9172-ff98-4c70-aff2-61f3fff19579
+:END:
+
+- Allow switching configs via =emacs -q -l ~/other-config/init.el=: the
+  =defconst= rebinds =user-emacs-directory= to wherever this file actually
+  lives, and exposes a sibling =.cache/= for persistent runtime files.
+- Don't compact font caches (improves performance with many fonts).
+- Skip fontification on input to reduce redisplay frequency.
+- Mouse-wheel and keyboard scroll behavior: small step, no progressive
+  acceleration, generous margin, screen-relative position preserved.
+
+#+begin_src emacs-lisp
+;; Allow switching configs via: emacs -q -l ~/other-config/init.el
+(defconst user-emacs-directory
+  (file-name-directory (or load-file-name (buffer-file-name)))
+  "My emacs config directory.")
+
+(defconst user-cache-directory
+  (file-name-as-directory (concat user-emacs-directory ".cache"))
+  "My emacs storage area for persistent files.")
+
+(make-directory user-cache-directory t)
+
+(setq inhibit-compacting-font-caches t
+      redisplay-skip-fontification-on-input t
+      fast-but-imprecise-scrolling nil
+      jit-lock-defer-time 0)
+
+;; Scroll behavior
+(setq mouse-wheel-scroll-amount '(1
+                                  ((shift) . 3)
+                                  ((meta) . 6)
+                                  ((control) . nil))
+      mouse-wheel-progressive-speed nil
+      mouse-wheel-follow-mouse t
+      scroll-step 1
+      scroll-conservatively 101
+      scroll-margin 3
+      scroll-preserve-screen-position t)
+#+end_src
+
+* Frame and UI behavior before 1st frame
+:PROPERTIES:
+:ID:       b146f127-19b0-46bb-a814-498e3883f0d9
+:END:
+
+- Set frame defaults early on both =default-frame-alist= and
+  =initial-frame-alist= so daemon/client and normal startup behave
+  consistently and avoid flicker/resizing on PGTK/Wayland.
+- Disable double-buffering (some compositors render better without it).
+- Apply a dark default face immediately to prevent a white flash before the
+  theme loads.
+- Disable bidirectional text reordering — pure LTR for faster redisplay.
+
+#+begin_src emacs-lisp
+;; Set frame defaults early to reduce flicker/resizing on PGTK/Wayland.
+;; Apply to both alists so daemon/client + normal startup behave consistently.
+(let ((params '((frame-inhibit-implied-resize . t)
+                (frame-resize-pixelwise . nil)
+                (undecorated . nil)
+                (left . 1000)
+                (top . 100)
+                (width  . 130)
+                (height . 50)
+                (title . "Emacs")
+                (internal-border-width . 4))))
+  (dolist (alist-var '(default-frame-alist initial-frame-alist))
+    (dolist (p params)
+      (setf (alist-get (car p) (symbol-value alist-var) nil nil #'eq)
+            (cdr p)))))
+
+(setq inhibit-double-buffering t)
+
+;; Dark face early to prevent white flash before theme loads
+(set-face-attribute 'default nil
+                    :family "JetBrains Mono"
+                    :height 120
+                    :background "#282c34"
+                    :foreground "#bbc2cf")
+
+;; No bidirectional text — pure LTR for faster redisplay
+(setq-default bidi-display-reordering nil
+              bidi-paragraph-direction 'left-to-right
+              bidi-inhibit-bpa t)
+#+end_src
+
+* Provide the file
+:PROPERTIES:
+:ID:       c6121e71-dfd0-434c-b62e-e865010a64fd
+:END:
+
+#+begin_src emacs-lisp
+(provide 'early-init)
+
+;;; early-init.el ends here
+#+end_src
