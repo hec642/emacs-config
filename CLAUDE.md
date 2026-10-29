@@ -7,18 +7,27 @@ Personal GNU Emacs configuration. Mirrored to public GitHub. Every push must be 
 | Trigger | Routes to | Allowed | Forbidden |
 |---------|-----------|---------|-----------|
 | `@editor`, "edit", "redact", "scan for PII", "prepare to publish" | `.claude/agents/editor.md` | Read, Edit, Grep, Glob | Bash, git, push |
-| `@publisher`, "publish", "commit and push", "ship it" | `.claude/agents/publisher.md` | Read, Bash, Grep, Glob | Edit, Write |
+| `@publisher`, "publish", "commit and push", "ship it" | `.claude/agents/publisher.md` | Read, Bash, Grep, Glob | Edit, Write, push |
 
 ## Cascade
 
 ```
-@editor → @publisher
+@editor → @publisher (commit) → orchestrator (push, after user approval)
 ```
 
 Hard rules:
 - **Never invoke `@publisher` without an `@editor` handoff in the same chain.** The publisher will refuse if the handoff is missing or stale.
 - **Editor never commits or pushes.** If the user asks the editor to "just push it", route to `@publisher` after the handoff is written.
 - **Publisher never edits.** If the publisher finds a problem in source, it bounces back to `@editor`.
+- **Publisher never pushes; the orchestrator does.** Subagents can't accept an approval relayed to them, so the push happens in the main session, where the user types the approval directly.
+
+## Push (orchestrator)
+
+After the publisher reports `Commit ready for orchestrator push`:
+1. Show the user the SHA, the commit message and the diffstat, then ask: "Approve `git push origin main`?"
+2. Push only on the user's own clear yes in this session. Before pushing, check that `git rev-parse HEAD` still matches the SHA the publisher reported. If it doesn't, ask again.
+3. Run `git push origin main`. If it fails with `Permission denied (publickey)` and `gh auth status` succeeds, switch origin to HTTPS (`git remote set-url origin https://github.com/<owner>/<repo>.git`), run `gh auth setup-git`, and retry.
+4. Append `YYYY-MM-DD HH:MM  orchestrator  <sha>  pushed=<yes|no>` to `.claude/state/run-log.md` and report the GitHub commit URL.
 
 ## PII rules
 
@@ -58,7 +67,7 @@ Then mark those lines `[addressed]` rather than deleting them — preserves the 
 
 ## Quick start
 
-- "Publish my recent changes" → orchestrator invokes `@editor` first; on `ready: yes`, invokes `@publisher`; publisher pauses for push approval.
+- "Publish my recent changes" → orchestrator invokes `@editor` first; on `ready: yes`, invokes `@publisher` to commit; the orchestrator then asks the user to approve and pushes.
 - "Just scan for PII" → `@editor` only.
 - "I already cleaned the files; push them" → `@publisher` will still demand a handoff. Run `@editor` first (it's idempotent and fast on clean files).
 
