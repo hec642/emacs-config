@@ -1,6 +1,6 @@
 ;;; config.el --- configuration file -*- lexical-binding: t; -*-
 ;; -------------------------------------------------------------------- Time stamp
-;; Time-stamp: "Last changed on 20260412T1540"
+;; Time-stamp: "Last changed on 20261028T2125"
 ;;; ------------------------------------------------------------------- Commentary:
 ;; My code snippets come mainly from the web. I evaluate snippets. Those that work
 ;; I add to my config.org file. This file is tangled to produce my configuration
@@ -52,23 +52,89 @@
 (straight-register-package 'org)
 (straight-register-package 'org-contrib)
 
-  (use-package async
-    :config
-    (async-bytecomp-package-mode 1)
+(use-package async
+  :config
+  (async-bytecomp-package-mode 1)
 
-    :commands (async-start dired-async-mode dired-do-async-shell-command))
+  :commands (async-start dired-async-mode dired-do-async-shell-command))
 
-  (use-package bind-key
-    :straight (:type built-in))
+(use-package bind-key
+  :straight (:type built-in))
 
-  (use-package dash)
+(use-package dash)
 
-  (use-package diminish)
+(use-package diminish)
 
-  (use-package f
-    :commands (f-entries f-ext?))
+(use-package f
+  :commands (f-entries f-ext?))
 
-  (use-package s)
+(use-package s)
+
+(use-package server
+  :straight (:type built-in)
+  :config
+  (unless (server-running-p)
+    (server-start))
+  (global-unset-key (kbd "C-x C-c"))
+  (global-unset-key (kbd "C-x C-z")))
+
+(use-package dbus
+  :straight (:type built-in)
+  :when (getenv "DESKTOP_AUTOSTART_ID")
+  :config
+  (defvar my-gnome-client-path nil
+    "D-Bus client path for GNOME SessionManager registration.")
+
+  (defun my-gnome-register-signals (client-path)
+    "Register for QueryEndSession and EndSession signals from GNOME SessionManager."
+    (setq my-gnome-client-path client-path)
+    (let ((end-session-response
+           (lambda (&optional _arg)
+             (dbus-call-method-asynchronously
+              :session "org.gnome.SessionManager"
+              my-gnome-client-path
+              "org.gnome.SessionManager.ClientPrivate"
+              "EndSessionResponse" nil t ""))))
+      (dbus-register-signal
+       :session "org.gnome.SessionManager" my-gnome-client-path
+       "org.gnome.SessionManager.ClientPrivate" "QueryEndSession"
+       end-session-response)
+      (dbus-register-signal
+       :session "org.gnome.SessionManager" my-gnome-client-path
+       "org.gnome.SessionManager.ClientPrivate" "EndSession"
+       (lambda (_arg)
+         (add-hook 'kill-emacs-hook end-session-response t)
+         (kill-emacs)))))
+
+  (dbus-call-method-asynchronously
+   :session
+   "org.gnome.SessionManager" "/org/gnome/SessionManager" "org.gnome.SessionManager"
+   "RegisterClient" #'my-gnome-register-signals "Emacs server"
+   (getenv "DESKTOP_AUTOSTART_ID")))
+
+(use-package emacs
+  :straight (:type built-in)
+  :init
+  (menu-bar-mode 1)
+  (scroll-bar-mode 1)
+
+  (setq-default cursor-type 'bar)
+
+  (setq scroll-bar-position 'right
+        print-length nil
+        print-level nil
+        eval-expression-print-length nil
+        eval-expression-print-level nil))
+
+(use-package tab-bar
+  :straight (:type built-in)
+  :init
+  (setq tab-bar-close-button-show nil)
+  (setq tab-bar-tab-hints t)
+  :config
+  (add-to-list 'tab-bar-format #'tab-bar-format-menu-bar))
+
+(fset 'display-startup-echo-area-message #'ignore)
 
 (use-package bug-hunter
   :commands (bug-hunter-init-file bug-hunter-file))
@@ -86,20 +152,6 @@
 (eval-when-compile
   (require 'cl-lib)
   (require 'subr-x))
-
-(use-package emacs
-  :straight (:type built-in)
-  :init
-  (menu-bar-mode 1)
-  (scroll-bar-mode 1)
-
-  (setq-default cursor-type 'bar)
-
-  (setq scroll-bar-position 'right
-        print-length nil
-        print-level nil
-        eval-expression-print-length nil
-        eval-expression-print-level nil))
 
 (use-package emacs
   :straight (:type built-in)
@@ -124,9 +176,25 @@
          ("C-c s-c" . my-char-case-toggle)
          ("C-c s-r" . my-block-compact-uncompact)))
 
-(setq-default display-fill-column-indicator-column 94)
-(setq-default fill-column 94)
-(global-display-fill-column-indicator-mode 1)
+(use-package emacs
+  :straight (:type built-in)
+  :init
+  (setq ad-redefinition-action 'accept)
+  :config
+  (defvar my--cursor-color-cache "" "Last cursor color set.")
+  (defvar my--cursor-color-buffer nil "Last buffer where cursor color was set.")
+
+  (defun my-set-cursor-color-according-to-mode ()
+    "Change cursor color according to some minor modes."
+    (let ((color (cond (buffer-read-only "purple")
+                       (overwrite-mode "red")
+                       (t "green"))))
+      (unless (and (string= color my--cursor-color-cache)
+                   (eq (current-buffer) my--cursor-color-buffer))
+        (set-cursor-color (setq my--cursor-color-cache color))
+        (setq my--cursor-color-buffer (current-buffer)))))
+
+  :hook (post-command-hook . my-set-cursor-color-according-to-mode))
 
 (use-package which-key
   :straight (:type built-in)
@@ -411,7 +479,7 @@
         org-use-tag-inheritance                    nil
         org-use-property-inheritance               nil
         org-complete-tags-always-offer-all-agenda-tags t
-        org-catch-invisible-edits                  'smart
+        org-fold-catch-invisible-edits             'smart
         org-log-done                               nil
         org-use-fast-todo-selection                t
         org-footnote-auto-adjust                   t
@@ -459,12 +527,14 @@
           ("DONE"       . (:foreground "maroon"  :weight bold))
           ("CANCEL"     . (:foreground "yellow"  :weight bold))))
 
+  (add-hook 'org-mode-hook #'variable-pitch-mode)
+
   ;; org-babel
   (setq org-babel-default-header-args:emacs-lisp '((:lexical . "yes"))
         org-babel-use-quick-and-dirty-noweb-expansion t
         org-confirm-babel-evaluate      nil
-        org-confirm-elisp-link-function nil
-        org-export-babel-evaluate       t)
+        org-link-elisp-confirm-function nil
+        org-export-use-babel            t)
 
   (org-babel-do-load-languages
    'org-babel-load-languages
@@ -477,7 +547,7 @@
      (python  . t) (js         . t)))
 
   (add-to-list 'org-src-lang-modes '("dot" . graphviz-dot))
-  (add-hook 'org-babel-after-execute-hook #'org-display-inline-images 'append)
+  (add-hook 'org-babel-after-execute-hook #'org-link-preview-refresh 'append)
 
   :hook (org-mode-hook . (lambda () (setq-local tab-width 8)))
   :bind (:map org-mode-map
@@ -528,6 +598,7 @@
      ("sp" . "src python\n"))))
 
       ;;; --------------------------------- org-refile
+
 (use-package org-refile
   :straight (:type built-in)
   :custom
@@ -549,38 +620,43 @@
   :demand t)
 
 (use-package org-capture
-    :straight (:type built-in)
-    :after org
-    :init
-    (setq org-capture-templates
-          `(("n" "Note" entry (file+headline ,(expand-file-name "inbox.org" org-directory) "Note")
-             "* %?\n\n:PROPERTIES:\n:CREATED: %U\n:END:\n/Context:/ %a")
+  :straight (:type built-in)
+  :after org
+  :init
+  (setq org-capture-templates
+        `(("n" "Note" entry (file+headline ,(expand-file-name "inbox.org" org-directory) "Note")
+           "* %?\n\n:PROPERTIES:\n:CREATED: %U\n:END:\n/Context:/ %a")
 
-            ("t" "Task" entry (file+headline ,(expand-file-name "inbox.org" org-directory) "Task")
-             "* TODO %?\n\n:PROPERTIES:\n:CREATED: %U\n:END:\n/Context:/ %a")))
+          (("w" "Web capture" entry
+            (file+headline ,(expand-file-name "inbox.org" org-directory) "Web")
+            "* %:description\n:PROPERTIES:\n:URL: %:link\n:CREATED: %U\n:END:\n\n%:annotation\n\n%i\n\n%?"
+            :empty-lines 1))
 
-    :config
-    (defvar abs--capture-frame nil
-      "The frame created for org-capture.")
+          ("t" "Task" entry (file+headline ,(expand-file-name "inbox.org" org-directory) "Task")
+           "* TODO %?\n\n:PROPERTIES:\n:CREATED: %U\n:END:\n/Context:/ %a")))
 
-    (defun abs--delete-frame-on-capture-finalize ()
-      "Delete the capture frame if it exists after capture finalizes."
-      (when (and abs--capture-frame (frame-live-p abs--capture-frame))
-        (delete-frame abs--capture-frame))
-      (remove-hook 'org-capture-after-finalize-hook #'abs--delete-frame-on-capture-finalize))
+  :config
+  (defvar abs--capture-frame nil
+    "The frame created for org-capture.")
 
-    (defun abs--quick-capture (&optional key)
-      "Launch an org-capture frame that deletes itself when done.
+  (defun abs--delete-frame-on-capture-finalize ()
+    "Delete the capture frame if it exists after capture finalizes."
+    (when (and abs--capture-frame (frame-live-p abs--capture-frame))
+      (delete-frame abs--capture-frame))
+    (remove-hook 'org-capture-after-finalize-hook #'abs--delete-frame-on-capture-finalize))
+
+  (defun abs--quick-capture (&optional key)
+    "Launch an org-capture frame that deletes itself when done.
   Optional argument KEY specifies the capture template key (default: \"n\")."
-      (interactive)
-      (let ((capture-key (or key "n")))
-        (setq abs--capture-frame (selected-frame))
-        (cl-letf (((symbol-function 'org-switch-to-buffer-other-window)
-                   #'switch-to-buffer))
-          (add-hook 'org-capture-after-finalize-hook #'abs--delete-frame-on-capture-finalize)
-          (org-capture nil capture-key))))
+    (interactive)
+    (let ((capture-key (or key "n")))
+      (setq abs--capture-frame (selected-frame))
+      (cl-letf (((symbol-function 'org-switch-to-buffer-other-window)
+                 #'switch-to-buffer))
+        (add-hook 'org-capture-after-finalize-hook #'abs--delete-frame-on-capture-finalize)
+        (org-capture nil capture-key))))
 
-    :bind ("<f9>" . abs--quick-capture))
+  :bind ("<f9>" . abs--quick-capture))
 
 (use-package org-agenda
   :straight (:type built-in)
@@ -661,7 +737,7 @@
            ((org-agenda-hide-tags-regexp "inbox")
             (org-agenda-compact-blocks t)))
 
-          ("w" "Week"
+          ("W" "Week"
            ((agenda ""
                     ((org-agenda-span 7)))
             (todo "INPROGRESS")
@@ -710,7 +786,7 @@
   (unless (file-exists-p org-roam-directory)
     (make-directory org-roam-directory t))
 
-  (org-roam-db-autosync-enable)
+  (org-roam-db-autosync-mode 1)
 
   (add-to-list 'display-buffer-alist
                '("\\*org-roam\\*"
@@ -948,11 +1024,6 @@
   :commands (org-timer-start org-timer-set-timer org-timer-pause-or-continue
                              org-timer-stop org-timer org-timer-item))
 
-(use-package org-pandoc-import
-  :straight (:host github
-                   :repo "tecosaur/org-pandoc-import"
-                   :files ("*.el" "filters" "preprocessors")))
-
 (use-package org-mouse
   :straight (:type built-in)
   :config
@@ -1005,7 +1076,17 @@
   :commands (org-cliplink))
 
 (use-package org-context
-  :commands (org-context-activate))
+  :commands (org-context-mode))
+
+(use-package org-pdftools
+  :straight (org-pdftools
+             :includes (org-noter-pdftools))
+  :defines (org-pdftools-mode)
+  :hook (org-mode-hook . org-pdftools-setup-link))
+
+(use-package org-noter-pdftools
+  :commands (org-noter-pdftools-jump-to-note)
+  :hook (pdf-annot-activate-handler-functions-hook . org-noter-pdftools-jump-to-note))
 
 (use-package nov
   :mode ("\\.epub\\'" . nov-mode))
@@ -1044,7 +1125,7 @@
         (delete-region (org-element-property :begin comment)
                        (org-element-property :end comment))))
     :commands (org-export-dispatch)
-    :hook (org-export-before-processing-hook . delete-org-comments))
+    :hook (org-export-before-processing-functions . delete-org-comments))
 
 (use-package ox-latex
   :after (org)
@@ -1061,7 +1142,7 @@
   (setq org-export-with-sub-superscripts '{})
   :config
   (setq org-latex-preview-ltxpng-directory "~/Dropbox/org/images/")
-  (setq org-latex-with-hyperref nil)
+  (setq org-latex-hyperref-template nil)
 
   ;; Default packages included in every tex file.
   (setq org-latex-packages-alist
@@ -1200,7 +1281,7 @@ xelatex via latexmk."
 ("\\subsection{%s}"    . "\\subsection*{%s}")
 ("\\subsubsection{%s}" . "\\subsubsection*{%s}")))
 
-  :hook (org-export-before-parsing-hook . my-auto-tex-cmd)
+  :hook (org-export-before-parsing-functions . my-auto-tex-cmd)
   :commands (org-latex-export-to-pdf org-export-string-as org-latex-preview))
 
 (use-package org-fragtog
@@ -1208,7 +1289,7 @@ xelatex via latexmk."
   (setq org-startup-with-latex-preview t)
   :hook (org-mode-hook . org-fragtog-mode)
   :config
-  (plist-put org-format-latex-options :scale 1.2))
+  (plist-put org-latex-preview-appearance-options :scale 1.2))
 
 (use-package ox-beamer
   :straight (:type built-in)
@@ -1355,11 +1436,6 @@ xelatex via latexmk."
   (org-reveal-transition "slide")
   (org-reveal-fragment-default "appear"))
 
-(use-package request)
-
-(use-package quarto-mode
-  :mode "\\.Rmd")
-
 (use-package citar
   :straight (citar :includes (citar-org))
   :preface
@@ -1450,13 +1526,13 @@ xelatex via latexmk."
   (advice-add #'citar-org-roam--create-capture-note
               :override #'my-citar-org-roam--create-capture-note))
 
+(use-package org-babel-eval-in-repl
+  :after (org eval-in-repl))
+
 (use-package eval-in-repl
   :commands (eir-eval-in-repl)
   :custom
   (eir-jump-after-eval nil))
-
-(use-package org-babel-eval-in-repl
-  :after (org eval-in-repl))
 
 (use-package ob-tangle
   :straight (:type built-in)
@@ -1503,6 +1579,19 @@ xelatex via latexmk."
   :config
   (org-ai-install-yasnippets))
 
+(use-package nerd-icons
+  :custom
+  (nerd-icons-font-family "Symbols Nerd Font Mono")
+  :config
+  (unless (file-exists-p (expand-file-name "~/.local/share/fonts/nerd-icons.ttf"))
+    (nerd-icons-install-fonts 'install-without-asking)))
+
+(use-package nerd-icons-completion
+  :after (marginalia nerd-icons)
+  :hook (marginalia-mode-hook . nerd-icons-completion-marginalia-setup)
+  :config
+  (nerd-icons-completion-mode))
+
 (use-package pretty-hydra)
 
 (use-package page-break-lines
@@ -1546,7 +1635,7 @@ xelatex via latexmk."
                         (when (derived-mode-p 'prog-mode 'text-mode 'bibtex-mode)
                           (unless display-line-numbers
                             (display-line-numbers-mode 1))
-                          (font-lock-fontify-buffer)))))))
+                          (font-lock-flush)))))))
     (set-face-attribute 'line-number-current-line nil
                         :background "#3B4252" :foreground "#EFEFEF")))
 
@@ -1674,8 +1763,6 @@ xelatex via latexmk."
   (auto-revert-verbose t)
   (global-auto-revert-non-file-buffers t))
 
-(fset 'display-startup-echo-area-message #'ignore)
-
 (use-package scratch
   :commands (scratch))
 
@@ -1691,24 +1778,25 @@ xelatex via latexmk."
   (bookmark-sort-flag 'last-modified)
   (bookmark-save-flag 1))
 
-(defvar default-gc-cons-threshold (* 128 1024 1024)
-  "Default `gc-cons-threshold' during normal emacs operations.")
-
-(defun gc-minibuffer-setup-hook ()
-  "Disable garbage collection in minibuffer."
-  (setq gc-cons-threshold most-positive-fixnum))
-
-(defun gc-minibuffer-exit-hook ()
-  "Restore garbage collection after minibuffer exit."
-  (garbage-collect)
-  (setq gc-cons-threshold default-gc-cons-threshold))
-
 (use-package minibuffer
   :straight (:type built-in)
   :bind (:map minibuffer-local-map
               ("C-w" . backward-kill-word))
   :hook ((minibuffer-setup-hook . gc-minibuffer-setup-hook)
-         (minibuffer-exit-hook  . gc-minibuffer-exit-hook)))
+         (minibuffer-exit-hook  . gc-minibuffer-exit-hook))
+  :config
+  ;; --- minibuffer GC tuning (used by corfu / cape / completion advice)
+  (defvar default-gc-cons-threshold (* 128 1024 1024)
+    "Default `gc-cons-threshold' during normal emacs operations.")
+
+  (defun gc-minibuffer-setup-hook ()
+    "Disable garbage collection in minibuffer."
+    (setq gc-cons-threshold most-positive-fixnum))
+
+  (defun gc-minibuffer-exit-hook ()
+    "Restore garbage collection after minibuffer exit."
+    (garbage-collect)
+    (setq gc-cons-threshold default-gc-cons-threshold)))
 
 (use-package isearch
   :straight (:type built-in)
@@ -1803,6 +1891,7 @@ xelatex via latexmk."
      orderless-regexp)))
 
 ;; Display Vertico in a child frame
+
 (use-package vertico-posframe
   :after vertico
   :init
@@ -1862,10 +1951,10 @@ xelatex via latexmk."
    consult-bookmark
    consult-recent-file
    consult-xref
-   consult--source-bookmark
-   consult--source-file-register
-   consult--source-recent-file
-   consult--source-project-recent-file :preview-key '(:debounce 0.4 any))
+   consult-source-bookmark
+   consult-source-file-register
+   consult-source-recent-file
+   consult-source-project-recent-file :preview-key '(:debounce 0.4 any))
   (setq consult-narrow-key "<")
   :hook (completion-list-mode-hook . consult-preview-at-point-mode)
   :bind (("M-s M-c" . consult-bookmark)
@@ -1938,26 +2027,6 @@ xelatex via latexmk."
    ([remap describe-symbol]   . helpful-symbol)
    ([remap describe-variable] . helpful-variable)))
 
-(use-package emacs
-  :straight (:type built-in)
-  :init
-  (setq ad-redefinition-action 'accept)
-  :config
-  (defvar my--cursor-color-cache "" "Last cursor color set.")
-  (defvar my--cursor-color-buffer nil "Last buffer where cursor color was set.")
-
-  (defun my-set-cursor-color-according-to-mode ()
-    "Change cursor color according to some minor modes."
-    (let ((color (cond (buffer-read-only "purple")
-                       (overwrite-mode "red")
-                       (t "green"))))
-      (unless (and (string= color my--cursor-color-cache)
-                   (eq (current-buffer) my--cursor-color-buffer))
-        (set-cursor-color (setq my--cursor-color-cache color))
-        (setq my--cursor-color-buffer (current-buffer)))))
-
-  :hook (post-command-hook . my-set-cursor-color-according-to-mode))
-
 (use-package beacon
   :config
   (setq beacon-push-mark 35)
@@ -1969,19 +2038,8 @@ xelatex via latexmk."
   :straight (:type built-in)
   :config
   (setq-default next-screen-context-lines 1)
-  (setq auto-window-vscroll nil))
+  (setq auto-window-vscroll nil)
 
-(use-package mouse
-  :straight (:type built-in)
-  :config
-  (context-menu-mode 1)
-  (setq make-pointer-invisible t)
-  (setq mouse-drag-copy-region nil)
-  (setq mouse-drag-and-drop-region t))
-
-(use-package emacs
-  :straight (:type built-in)
-  :config
   ;; Highlight marked region
   (setq mark-even-if-inactive t)
   ;; Shift works with cursor keys
@@ -1999,6 +2057,14 @@ xelatex via latexmk."
   ;; Save clipboard strings into kill ring before replacing them
   (setq save-interprogram-paste-before-kill t))
 
+(use-package mouse
+  :straight (:type built-in)
+  :config
+  (context-menu-mode 1)
+  (setq make-pointer-invisible t)
+  (setq mouse-drag-copy-region nil)
+  (setq mouse-drag-and-drop-region t))
+
 (use-package emacs
   :straight (:type built-in)
   :init
@@ -2011,11 +2077,11 @@ xelatex via latexmk."
   (setq use-hard-newlines nil)
 
   (setq user-full-name (or (getenv "USER_FULL_NAME") "Your Name"))
-  (setq user-mail-address (or (getenv "EMAIL") "your-email@example.com"))
+  (setq user-mail-address (or (getenv "EMAIL") "Your Email"))
 
-  (defvar my-user-short-name (or (getenv "USER_FULL_NAME") "Your Name"))
-  (defvar my-user-first-name "Your")
-  (defvar my-user-last-name "Name")
+  (defvar my-user-short-name (or (getenv "USER_NAME") "Name"))
+  (defvar my-user-first-name "First")
+  (defvar my-user-last-name "Last")
 
   :config
   (setq x-underline-at-descent-line t)
@@ -2042,19 +2108,15 @@ xelatex via latexmk."
   (setq right-margin-width 2)
   :hook (org-mode-hook . visual-line-mode))
 
-(use-package visual-fill-column
-  :custom
-  (visual-fill-column-center-text nil)
-  (visual-fill-column-width 100)
-  (visual-fill-column-enable-sensible-window-split t)
-  (visual-fill-column-adjust-for-text-scale t)
+(use-package emacs
+  :straight (:type built-in)
   :config
-  (advice-add 'text-scale-adjust :after #'visual-fill-column-adjust)
-  (add-hook 'visual-fill-column-mode-hook
-            (lambda ()
-              (display-fill-column-indicator-mode
-               (if visual-fill-column-mode -1 1))))
-  :hook (visual-line-mode-hook . visual-fill-column-mode))
+  (dolist
+      (cmd '(scroll-left downcase-region upcase-region
+                         narrow-to-region narrow-to-page eval-expression
+                         set-goal-column erase-buffer narrow-to-defun
+                         dired-find-alternate-file))
+    (put cmd 'disabled nil)))
 
 (use-package logos
   :custom
@@ -2072,13 +2134,9 @@ xelatex via latexmk."
 
 (use-package emacs
   :straight (:type built-in)
-  :config
-  (dolist
-      (cmd '(scroll-left downcase-region upcase-region
-                         narrow-to-region narrow-to-page eval-expression
-                         set-goal-column erase-buffer narrow-to-defun
-                         dired-find-alternate-file))
-    (put cmd 'disabled nil)))
+  :init
+  (setq warning-minimum-level :error)
+  (setq confirm-nonexistent-file-or-buffer nil))
 
 (use-package dired
   :straight (:type built-in)
@@ -2145,29 +2203,24 @@ xelatex via latexmk."
   :bind (:map dired-mode-map
               ("E" . wdired-change-to-wdired-mode)))
 
-(use-package nerd-icons
-  :custom
-  (nerd-icons-font-family "Symbols Nerd Font Mono")
-  :config
-  (unless (file-exists-p (expand-file-name "~/.local/share/fonts/nerd-icons.ttf"))
-    (nerd-icons-install-fonts 'install-without-asking)))
-
 (use-package nerd-icons-dired
   :hook (dired-mode-hook . nerd-icons-dired-mode)
   :custom
   (nerd-icons-dired-monochrome nil))
 
-(use-package nerd-icons-completion
-  :after (marginalia nerd-icons)
-  :hook (marginalia-mode-hook . nerd-icons-completion-marginalia-setup)
-  :config
-  (nerd-icons-completion-mode))
-
 (use-package emacs
   :straight (:type built-in)
-  :init
-  (setq display-warning-minimum-level 'error)
-  (setq confirm-nonexistent-file-or-buffer nil))
+  :config
+  (defun my-close-all-buffers ()
+    "Kill all buffers besides the current one."
+    (interactive)
+    (mapc #'kill-buffer (delq (current-buffer) (buffer-list))))
+
+  (defun my-nuke-all-buffers ()
+    "Kill all buffers, leaving *scratch* only."
+    (interactive)
+    (mapc #'kill-buffer (buffer-list))
+    (delete-other-windows)))
 
 (use-package saveplace
   :straight (:type built-in)
@@ -2190,22 +2243,15 @@ xelatex via latexmk."
   (setq uniquify-buffer-name-style   'post-forward)
   (setq uniquify-min-dir-content      2)
   (setq uniquify-separator           ":")
-  (setq uniquify-after-kill-buffer-p  t)
+  (setq uniquify-after-kill-buffer-flag t)
   (setq uniquify-ignore-buffers-re   "^\\*"))
 
 (use-package emacs
   :straight (:type built-in)
   :config
-  (defun my-close-all-buffers ()
-    "Kill all buffers besides the current one."
-    (interactive)
-    (mapc #'kill-buffer (delq (current-buffer) (buffer-list))))
-
-  (defun my-nuke-all-buffers ()
-    "Kill all buffers, leaving *scratch* only."
-    (interactive)
-    (mapc #'kill-buffer (buffer-list))
-    (delete-other-windows)))
+  (setq undo-limit 67108864)            ; 64 MB soft limit
+  (setq undo-strong-limit 100663296)    ; 96 MB strong limit
+  (setq undo-outer-limit 1006632960))   ; ~960 MB outer limit
 
 (use-package ibuffer
   :straight (:type built-in)
@@ -2237,12 +2283,42 @@ xelatex via latexmk."
   (setq ibuffer-project-use-cache t)
   :hook (ibuffer-mode-hook . my-ibuffer-project-setup))
 
-(defun my-ibuffer-project-setup ()
-  "Set up ibuffer-project filter groups and sorting."
-  (setq ibuffer-filter-groups
-        (ibuffer-project-generate-filter-groups))
-  (unless (eq ibuffer-sorting-mode 'alphabetic)
-    (ibuffer-do-sort-by-alphabetic)))
+(use-package emacs
+  :straight (:type built-in)
+  :config
+  (defun my-backward-word ()
+    "Move one word backward, treating _ as part of word."
+    (interactive)
+    (backward-word 1)
+    (backward-char 1)
+    (cond ((looking-at "_") (my-backward-word))
+          (t (forward-char 1))))
+
+  (defun my-forward-word ()
+    "Move one word forward to start of next word, treating _ as part of word."
+    (interactive)
+    (forward-char 1)
+    (backward-word 1)
+    (forward-word 2)
+    (backward-word 1)
+    (backward-char 1)
+    (cond ((looking-at "_") (forward-char 1) (my-forward-word))
+          (t (forward-char 1))))
+
+  (defun my-delete-word (arg)
+    "Delete characters forward until encountering the end of a word.
+With argument ARG, do this that many times."
+    (interactive "p")
+    (delete-region (point) (progn (forward-word arg) (point))))
+
+  (defun my-backward-delete-word (arg)
+    "Delete characters backward until encountering the end of a word.
+With argument ARG, do this that many times."
+    (interactive "p")
+    (my-delete-word (- arg)))
+
+  :bind (("M-f" . my-forward-word)
+         ("M-b" . my-backward-word)))
 
 (use-package whitespace
   :straight (:type built-in)
@@ -2407,10 +2483,10 @@ xelatex via latexmk."
 
 (use-package emacs
   :straight (:type built-in)
-  :config
-  (setq undo-limit 67108864)            ; 64 MB soft limit
-  (setq undo-strong-limit 100663296)    ; 96 MB strong limit
-  (setq undo-outer-limit 1006632960))   ; ~960 MB outer limit
+  :init
+  (setq mode-require-final-newline 'visit-save)
+  (setq next-line-add-newlines nil)
+  (setq kill-whole-line t))
 
 (use-package vundo
   :bind ("C-x u" . vundo)
@@ -2439,50 +2515,6 @@ xelatex via latexmk."
   (set-face-attribute 'mc/cursor-face nil :foreground "cyan")
   :bind (("C->" . mc/mark-next-like-this)
          ("C-S-<mouse-1>" . mc/add-cursor-on-click)))
-
-(use-package emacs
-  :straight (:type built-in)
-  :config
-  (defun my-backward-word ()
-    "Move one word backward, treating _ as part of word."
-    (interactive)
-    (backward-word 1)
-    (backward-char 1)
-    (cond ((looking-at "_") (my-backward-word))
-          (t (forward-char 1))))
-
-  (defun my-forward-word ()
-    "Move one word forward to start of next word, treating _ as part of word."
-    (interactive)
-    (forward-char 1)
-    (backward-word 1)
-    (forward-word 2)
-    (backward-word 1)
-    (backward-char 1)
-    (cond ((looking-at "_") (forward-char 1) (my-forward-word))
-          (t (forward-char 1))))
-
-  (defun my-delete-word (arg)
-    "Delete characters forward until encountering the end of a word.
-With argument ARG, do this that many times."
-    (interactive "p")
-    (delete-region (point) (progn (forward-word arg) (point))))
-
-  (defun my-backward-delete-word (arg)
-    "Delete characters backward until encountering the end of a word.
-With argument ARG, do this that many times."
-    (interactive "p")
-    (my-delete-word (- arg)))
-
-  :bind (("M-f" . my-forward-word)
-         ("M-b" . my-backward-word)))
-
-(use-package emacs
-  :straight (:type built-in)
-  :init
-  (setq mode-require-final-newline 'visit-save)
-  (setq next-line-add-newlines nil)
-  (setq kill-whole-line t))
 
 (use-package emacs
   :straight (:type built-in)
@@ -2560,6 +2592,34 @@ Cycles between: all lower, Init Caps, ALL CAPS."
         (insert "------\n"))))
   :bind ("C-c f s" . my-fill-paragraph-and-separate))
 
+(use-package emacs
+  :straight (:type built-in)
+  :init
+  (setq read-extended-command-predicate #'command-completion-default-include-p)
+  (setq text-mode-ispell-word-completion nil)
+  (setq tab-always-indent 'complete))
+
+(use-package emacs
+  :straight (:type built-in)
+  :config
+  (defun my-insert-time ()
+    "Insert current time."
+    (interactive)
+    (insert (current-time-string)))
+
+  (defun my-insert-date (prefix)
+    "Insert the current date.
+With no PREFIX argument, use ISO date format.
+With prefix argument 64, use ISO datetime format."
+    (interactive "P")
+    (let ((format (cond
+                   ((not prefix)         "%Y%m%d")
+                   ((equal prefix '(64)) "%Y%m%dT%H%M"))))
+      (insert (format-time-string format))))
+
+  :bind (("C-c M-d" . my-insert-date)
+         ("C-c M-t" . my-insert-time)))
+
 (use-package align
   :straight (:type built-in)
   :config
@@ -2587,13 +2647,6 @@ Cycles between: all lower, Init Caps, ALL CAPS."
   (setq goto-address-url-mouse-face 'default)
   :hook ((prog-mode-hook text-mode-hook) . goto-address-mode))
 
-(use-package emacs
-  :straight (:type built-in)
-  :init
-  (setq read-extended-command-predicate #'command-completion-default-include-p)
-  (setq text-mode-ispell-word-completion nil)
-  (setq tab-always-indent 'complete))
-
 (use-package corfu
   :custom
   (corfu-cycle t)
@@ -2619,6 +2672,9 @@ Cycles between: all lower, Init Caps, ALL CAPS."
          ("C-c c a" . cape-abbrev)
          ("C-c c l" . cape-line)))
 
+(use-package yasnippet-snippets
+  :after yasnippet)
+
 (use-package yasnippet
   :custom
   (yas-also-auto-indent-first-line t)
@@ -2638,9 +2694,6 @@ Cycles between: all lower, Init Caps, ALL CAPS."
               ("C-c s-r" . yas-reload-all))
   :hook (after-init-hook . yas-global-mode))
 
-(use-package yasnippet-snippets
-  :after yasnippet)
-
 (use-package yasnippet-capf
   :after (cape yasnippet)
   :config
@@ -2658,26 +2711,13 @@ Cycles between: all lower, Init Caps, ALL CAPS."
                       :foreground "red" :inherit 'error :strike-through t)
   :hook (prog-mode-hook . rainbow-delimiters-mode))
 
-(use-package smartparens
-  :diminish smartparens-mode
-  :init
-  (setq sp-base-key-bindings 'sp)
-  (setq sp-show-pair-delay 0)
-  (setq sp-show-pair-from-inside nil)
-  (setq sp-cancel-autoskip-on-backward-movement nil)
-  (setq sp-highlight-pair-overlay nil)
-  (setq sp-highlight-wrap-overlay nil)
-  (setq sp-highlight-wrap-tag-overlay nil)
-  :hook
-  ((after-init-hook . show-smartparens-global-mode)
-   ((minibuffer-setup-hook prog-mode-hook org-mode-hook) . turn-on-smartparens-strict-mode)))
-
 (use-package smartparens-config
   :straight (smartparens :includes (smartparens-config))
   :after smartparens
   :config
-  (sp-pair "'" nil :actions :rem)
-  (sp-pair "`" nil :actions :rem)
+  ;; Keep ' and ` defined (mode configs refine them) but never auto-pair them.
+  (sp-pair "'" "'" :actions nil)
+  (sp-pair "`" "`" :actions nil)
 
   (defun my-sp-pair-newline-and-indent (_id _action _context)
     "Newline and indent after inserting a pair."
@@ -2707,6 +2747,20 @@ Cycles between: all lower, Init Caps, ALL CAPS."
                    :unless '(sp-point-after-word-p sp--org-inside-LaTeX))
     (sp-local-pair "\\[" "\\]")))
 
+(use-package smartparens
+  :diminish smartparens-mode
+  :init
+  (setq sp-base-key-bindings 'sp)
+  (setq sp-show-pair-delay 0)
+  (setq sp-show-pair-from-inside nil)
+  (setq sp-cancel-autoskip-on-backward-movement nil)
+  (setq sp-highlight-pair-overlay nil)
+  (setq sp-highlight-wrap-overlay nil)
+  (setq sp-highlight-wrap-tag-overlay nil)
+  :hook
+  ((after-init-hook . show-smartparens-global-mode)
+   ((minibuffer-setup-hook prog-mode-hook org-mode-hook) . turn-on-smartparens-strict-mode)))
+
 (use-package rainbow-mode
   :diminish rainbow-mode
   :config
@@ -2724,6 +2778,25 @@ Cycles between: all lower, Init Caps, ALL CAPS."
   :config
   (treesit-auto-add-to-auto-mode-alist 'all)
   (global-treesit-auto-mode))
+
+(use-package flyspell
+  :straight (:type built-in)
+  :diminish (flyspell-mode . " φ")
+  :config
+  (setq flyspell-issue-message-flag nil)
+  (setq flyspell-prog-text-faces (delq 'font-lock-string-face
+                                       flyspell-prog-text-faces))
+  (setq flyspell-prog-text-faces (delq 'font-lock-doc-face
+                                       flyspell-prog-text-faces))
+  :bind (:map flyspell-mode-map
+              ([down-mouse-3] . flyspell-correct-word))
+  :hook ((text-mode-hook . flyspell-mode)
+         (prog-mode-hook . flyspell-prog-mode)))
+
+(use-package flyspell-correct
+  :after flyspell
+  :bind (:map flyspell-mode-map
+              ("C-c $" . flyspell-correct-wrapper)))
 
 (use-package ispell
   :straight (:type built-in)
@@ -2756,25 +2829,6 @@ Cycles between: all lower, Init Caps, ALL CAPS."
   (add-to-list 'ispell-skip-region-alist '(":PROPERTIES:"  . ":END:"))
   (add-to-list 'ispell-skip-region-alist '("#\\+[Bb][Ee][Gg][Ii][Nn]_[Ss][Rr][Cc]" . "#\\+[Ee][Nn][Dd]_[Ss][Rr][Cc]")))
 
-(use-package flyspell
-  :straight (:type built-in)
-  :diminish (flyspell-mode . " φ")
-  :config
-  (setq flyspell-issue-message-flag nil)
-  (setq flyspell-prog-text-faces (delq 'font-lock-string-face
-                                       flyspell-prog-text-faces))
-  (setq flyspell-prog-text-faces (delq 'font-lock-doc-face
-                                       flyspell-prog-text-faces))
-  :bind (:map flyspell-mode-map
-              ([down-mouse-3] . flyspell-correct-word))
-  :hook ((text-mode-hook . flyspell-mode)
-         (prog-mode-hook . flyspell-prog-mode)))
-
-(use-package flyspell-correct
-  :after flyspell
-  :bind (:map flyspell-mode-map
-              ("C-c $" . flyspell-correct-wrapper)))
-
 (use-package calfw
   :straight (calfw :includes (calfw-org calfw-ical calfw-cal))
   :init
@@ -2789,7 +2843,9 @@ Cycles between: all lower, Init Caps, ALL CAPS."
   :bind ("C-c C" . cfw:open-org-calendar))
 
 (use-package calfw-org :after calfw)
+
 (use-package calfw-ical :after calfw)
+
 (use-package calfw-cal :after calfw)
 
 (use-package time-stamp
@@ -2801,26 +2857,11 @@ Cycles between: all lower, Init Caps, ALL CAPS."
   (setq time-stamp-format "Last changed on %Y%m%dT%H%M")
   :hook (before-save-hook . time-stamp))
 
-(use-package emacs
-  :straight (:type built-in)
-  :config
-  (defun my-insert-time ()
-    "Insert current time."
-    (interactive)
-    (insert (current-time-string)))
-
-  (defun my-insert-date (prefix)
-    "Insert the current date.
-With no PREFIX argument, use ISO date format.
-With prefix argument 64, use ISO datetime format."
-    (interactive "P")
-    (let ((format (cond
-                   ((not prefix)         "%Y%m%d")
-                   ((equal prefix '(64)) "%Y%m%dT%H%M"))))
-      (insert (format-time-string format))))
-
-  :bind (("C-c M-d" . my-insert-date)
-         ("C-c M-t" . my-insert-time)))
+(use-package tldr
+  :init
+  (setq tldr-directory-path (expand-file-name "tldr/" user-cache-directory))
+  (setq tldr-saved-zip-path (expand-file-name "tldr-source.zip" user-cache-directory))
+  :bind ("C-c s-t" . tldr-find-page))
 
 (use-package pdf-tools
   :load-path "~/.emacs.d/straight/repos/pdf-tools/lisp/"
@@ -2859,7 +2900,7 @@ With prefix argument 64, use ISO datetime format."
         '(display-buffer-reuse-window (reusable-frames . t)))
 
   (defun my-display-buffer-in-pdf-frame (buffer alist)
-    (if-let ((frame (car (seq-filter
+    (if-let* ((frame (car (seq-filter
                           (lambda (f) (frame-parameter f 'my-pdf-frame))
                           (frame-list)))))
         (display-buffer-use-some-frame
@@ -2876,6 +2917,15 @@ With prefix argument 64, use ISO datetime format."
 
   (add-to-list 'revert-without-query ".+\\.pdf")
 
+  ;; --- pdf-view-mode setup (belongs near the pdf-tools use-package)
+  (defun my-pdf-view-mode-setup ()
+    "Configure pdf-view-mode with midnight colors and minor modes."
+    (pdf-view-midnight-minor-mode)
+    (pdf-misc-size-indication-minor-mode)
+    (pdf-links-minor-mode)
+    (pdf-isearch-minor-mode)
+    (cua-mode 0))
+
   :bind (:map pdf-view-mode-map
               ("N" . pdf-no-filter)
               ("Y" . pdf-midnite-yellow)
@@ -2884,24 +2934,6 @@ With prefix argument 64, use ISO datetime format."
   (TeX-pdf-tools-sync-view pdf-outline pdf-info-gettext pdf-isearch-minor-mode
                            pdf-info-getannots)
   :hook (pdf-view-mode-hook . my-pdf-view-mode-setup))
-
-(defun my-pdf-view-mode-setup ()
-  "Configure pdf-view-mode with midnight colors and minor modes."
-  (pdf-view-midnight-minor-mode)
-  (pdf-misc-size-indication-minor-mode)
-  (pdf-links-minor-mode)
-  (pdf-isearch-minor-mode)
-  (cua-mode 0))
-
-(use-package org-pdftools
-  :straight (org-pdftools
-             :includes (org-noter-pdftools))
-  :defines (org-pdftools-mode)
-  :hook (org-mode-hook . org-pdftools-setup-link))
-
-(use-package org-noter-pdftools
-  :commands (org-noter-pdftools-jump-to-note)
-  :hook (pdf-annot-activate-handler-functions-hook . org-noter-pdftools-jump-to-note))
 
 (use-package pdf-annot
   :straight (:type built-in)
@@ -3012,14 +3044,6 @@ TITLE defaults to the filename, LEVEL to one below current heading."
   :config
   (add-to-list 'project-switch-commands '(magit-project-status "Magit" ?m)))
 
-(use-package tab-bar
-  :straight (:type built-in)
-  :init
-  (setq tab-bar-close-button-show nil)
-  (setq tab-bar-tab-hints t)
-  :config
-  (add-to-list 'tab-bar-format #'tab-bar-format-menu-bar))
-
 (use-package tabspaces
   :after tab-bar
   :init
@@ -3066,14 +3090,12 @@ TITLE defaults to the filename, LEVEL to one below current heading."
 (use-package git-link
   :after magit)
 
-(use-package polymode)
-
-(use-package poly-markdown
-  :after (polymode markdown-mode))
-
 (use-package markdown-mode
   :diminish (markdown-mode . " MD")
-  :mode "\\.md\\'"
+  :mode
+  (("\\.md\\'"       . markdown-mode)
+   ("\\.markdown\\'" . markdown-mode)
+   ("README\\.md\\'" . gfm-mode))
   :custom
   (markdown-fontify-code-blocks-natively t)
   (markdown-command "pandoc -f markdown -t html -s --highlight-style=pygments")
@@ -3085,6 +3107,54 @@ TITLE defaults to the filename, LEVEL to one below current heading."
   :after markdown-mode
   :custom
   (markdown-toc-header-toc-title "**Table of Contents**"))
+
+(use-package polymode)
+
+(use-package poly-markdown
+  :after (polymode markdown-mode)
+  :mode
+  (("\\.md\\'"       . poly-markdown-mode)
+   ("\\.markdown\\'" . poly-markdown-mode))
+  :config
+  ;; Optional: make polymode behave a bit less intrusively
+  (setq polymode-prefix-key (kbd "C-c n"))
+
+  ;; Optional: export/weave behavior can be customized later if needed
+  ;; (setq polymode-weaver-output-file-format "%s")
+  )
+
+(use-package request
+  :ensure t
+  :defer t
+  :custom
+  (request-backend
+   (if (executable-find "curl")
+       'curl
+     'url-retrieve)))
+
+(use-package org-pandoc-import
+  :straight (:host github
+                   :repo "tecosaur/org-pandoc-import"
+                   :files ("*.el" "filters" "preprocessors"))
+  :after org
+  :commands
+  (org-pandoc-import-to-org
+   org-pandoc-import-as-org
+   org-pandoc-import-docx-to-org
+   org-pandoc-import-markdown-to-org
+   org-pandoc-import-odt-to-org
+   org-pandoc-import-csv-to-org
+   org-pandoc-import-ipynb-to-org)
+  :init
+  ;; Keep transient mode off by default.
+  ;; Enable it only if you really want Emacs to open certain non-Org files
+  ;; as temporary Org buffers.
+  (setq org-pandoc-import-transient-mode nil)
+  :config
+  ;; Do not globally hijack supported non-Org files.
+  ;; Use explicit import commands instead.
+  (when (not (executable-find "pandoc"))
+    (warn "org-pandoc-import requires the pandoc executable, but pandoc was not found")))
 
 (use-package lsp-mode
   :hook (python-mode-hook . lsp-deferred)
@@ -3122,12 +3192,13 @@ TITLE defaults to the filename, LEVEL to one below current heading."
   :straight (:type built-in)
   :init
   (setq emacs-lisp-docstring-fill-column 100)
-  :hook (emacs-lisp-mode-hook . my-emacs-lisp-mode-setup))
-
-(defun my-emacs-lisp-mode-setup ()
-  "Extra setup for emacs-lisp buffers."
-  (outline-minor-mode 1)
-  (rainbow-mode 1))
+  :hook (emacs-lisp-mode-hook . my-emacs-lisp-mode-setup)
+  :config
+  ;; --- emacs-lisp setup (belongs near the elisp-mode use-package)
+  (defun my-emacs-lisp-mode-setup ()
+    "Extra setup for emacs-lisp buffers."
+    (outline-minor-mode 1)
+    (rainbow-mode 1)))
 
 (use-package elisp-format
   :commands elisp-format-buffer)
@@ -3137,6 +3208,25 @@ TITLE defaults to the filename, LEVEL to one below current heading."
 
 (use-package highlight-defined
   :hook (emacs-lisp-mode-hook . highlight-defined-mode))
+
+(use-package visual-fill-column
+  :custom
+  (visual-fill-column-center-text nil)
+  (visual-fill-column-width 100)
+  (visual-fill-column-enable-sensible-window-split t)
+  (visual-fill-column-adjust-for-text-scale t)
+  :config
+  (advice-add 'text-scale-adjust :after #'visual-fill-column-adjust)
+  (add-hook 'visual-fill-column-mode-hook
+            (lambda ()
+              (display-fill-column-indicator-mode
+               (if visual-fill-column-mode -1 1))))
+  :hook (visual-line-mode-hook . visual-fill-column-mode))
+
+;; --- display-fill-column-indicator
+(setq-default display-fill-column-indicator-column 94)
+(setq-default fill-column 94)
+(global-display-fill-column-indicator-mode 1)
 
 (use-package tex
   :defer t
@@ -3309,19 +3399,6 @@ TITLE defaults to the filename, LEVEL to one below current heading."
       ("ö" . "\\\"{o}") ("Ö" . "\\\"{O}")
       ("ş" . "\\c{s}")  ("Ş" . "\\c{S}")))
 
-  (easy-menu-add-item nil '("LaTeX")
-                      ["Text -> Table" my-tex-text-to-table
-                       :help "Paragraph to latex table"]
-                      "Comment or Uncomment Region")
-
-  :bind (:map LaTeX-mode-map
-              ("<f5>"    . (lambda () (interactive) (save-buffer) (TeX-command-master)))
-              ("<s-f5>"  . (lambda () (interactive) (TeX-command-menu "LaTeX")))
-              ("s-b"     . (lambda () (interactive) (TeX-command-menu "BibTeX")))
-              ("C-c k"   . TeX-clean)
-              ("s-a"     . LaTeX-find-matching-begin)
-              ("s-e"     . LaTeX-find-matching-end)
-              ("C-c z"   . my-cite))
   :hook ((LaTeX-mode-hook . (lambda ()
                               (set-input-method "TeX")
                               (TeX-PDF-mode 1)
@@ -3341,6 +3418,20 @@ TITLE defaults to the filename, LEVEL to one below current heading."
 (use-package latex
   :straight (:type built-in)
   :after tex
+  :config
+  (easy-menu-add-item LaTeX-mode-map '("LaTeX")
+                      ["Text -> Table" my-tex-text-to-table
+                       :help "Paragraph to latex table"]
+                      "Comment or Uncomment Region")
+  ;; LaTeX-mode-map is defined in latex.el, not tex.el.
+  :bind (:map LaTeX-mode-map
+              ("<f5>"    . (lambda () (interactive) (save-buffer) (TeX-command-master)))
+              ("<s-f5>"  . (lambda () (interactive) (TeX-command-menu "LaTeX")))
+              ("s-b"     . (lambda () (interactive) (TeX-command-menu "BibTeX")))
+              ("C-c k"   . TeX-clean)
+              ("s-a"     . LaTeX-find-matching-begin)
+              ("s-e"     . LaTeX-find-matching-end)
+              ("C-c z"   . my-cite))
   :commands
   (LaTeX-add-environments LaTeX-find-matching-begin
                           LaTeX-mark-environment LaTeX-insert-item
@@ -3369,7 +3460,8 @@ TITLE defaults to the filename, LEVEL to one below current heading."
   (set-face-attribute 'font-latex-subscript-face   nil :height 0.6)
   (set-face-attribute 'font-latex-superscript-face nil :height 0.6)
 
-  (let ((height init-default-font-height))
+  ;; 1.0 = same height as `default', so it tracks the active Fontaine preset.
+  (let ((height 1.0))
     (dolist (face '(font-latex-sectioning-0-face
                     font-latex-sectioning-1-face
                     font-latex-sectioning-2-face
@@ -3529,11 +3621,12 @@ TITLE defaults to the filename, LEVEL to one below current heading."
    '(last-comma realign delimiters unify-case sort-fields))
   (bibtex-file-path (list bibliography-directory))
   :bind (:map bibtex-mode-map
-              ("M-b M-f" . bibtex-reformat)))
-
-(add-hook 'bibtex-mode-hook (lambda ()
-                              (display-line-numbers-mode 1)
-                              (font-lock-fontify-buffer)))
+              ("M-b M-f" . bibtex-reformat))
+  :config
+  ;; --- bibtex hook (belongs near the bibtex use-package)
+  (add-hook 'bibtex-mode-hook (lambda ()
+                                (display-line-numbers-mode 1)
+                                (font-lock-flush))))
 
 (use-package bibtex-completion
   :init
@@ -3591,59 +3684,6 @@ TITLE defaults to the filename, LEVEL to one below current heading."
          (ediff-quit-hook . (lambda ()
                               (jump-to-register 'ediff)))))
 
-(use-package vterm
-  :commands (vterm vterm-other-window)
-  :init
-  (setq vterm-kill-buffer-on-exit t)
-  (setq vterm-max-scrollback 10000)
-  (setq claude-code-terminal-backend 'vterm)
-  :config
-  (setq shell-file-name "/bin/bash")
-  (setenv "SHELL" shell-file-name)
-  (setq term-prompt-regexp "^[^#$%>\n]*[#$%>] *")
-
-  (add-to-list 'display-buffer-alist
-               '("vterm-subterminal.*"
-                 (display-buffer-reuse-window
-                  display-buffer-in-side-window)
-                 (side . bottom)
-                 (reusable-frames . visible)
-                 (window-height . 0.33)))
-
-  (defun my-toggle-vterm-subterminal ()
-    "Toggle a vterm side window at the bottom."
-    (interactive)
-    (let ((vterm-window
-           (seq-find
-            (lambda (window)
-              (string-match-p
-               "vterm-subterminal"
-               (buffer-name (window-buffer window))))
-            (window-list))))
-      (if vterm-window
-          (if (eq (get-buffer-window (current-buffer)) vterm-window)
-              (kill-buffer (current-buffer))
-            (select-window vterm-window))
-        (vterm-other-window "vterm-subterminal"))))
-
-  (defun my-vterm-get-pwd ()
-    "Get the current working directory of the vterm process."
-    (if vterm--process
-        (file-truename (format "/proc/%d/cwd" (process-id vterm--process)))
-      default-directory))
-
-  (defun my-vterm-dired-other-window ()
-    "Open dired in vterm pwd in other window."
-    (interactive)
-    (dired-other-window (my-vterm-get-pwd)))
-
-  (defun my-vterm-dired-replace ()
-    "Replace vterm with dired in the current directory."
-    (interactive)
-    (let ((pwd (my-vterm-get-pwd)))
-      (kill-process vterm--process)
-      (dired pwd))))
-
 (use-package ansi-color
   :straight (:type built-in)
   :hook ((compilation-filter-hook . ansi-color-compilation-filter)))
@@ -3695,16 +3735,17 @@ TITLE defaults to the filename, LEVEL to one below current heading."
                          (name (cadr directory)))
                     (concat parent name " $ "))))
 
+  ;; --- eshell setup
+  (defun my-eshell-mode-setup ()
+    "Configure eshell buffers."
+    (setq-local global-hl-line-mode nil)
+    (setq-local whitespace-line-column 100)
+    (setq-local blink-matching-paren nil)
+    (flycheck-mode -1)
+    (show-smartparens-mode -1))
+
   :commands (eshell eshell-command)
   :hook (eshell-mode-hook . my-eshell-mode-setup))
-
-(defun my-eshell-mode-setup ()
-  "Configure eshell buffers."
-  (setq-local global-hl-line-mode nil)
-  (setq-local whitespace-line-column 100)
-  (setq-local blink-matching-paren nil)
-  (flycheck-mode -1)
-  (show-smartparens-mode -1))
 
 (use-package web-mode
   :mode "\\.html?\\'"
@@ -3826,7 +3867,7 @@ TITLE defaults to the filename, LEVEL to one below current heading."
   :bind (("C-c l l" . gptel)
          ("C-c l r" . gptel-rewrite)
          ("C-c l m" . gptel-menu))
-  :hook (gptel-post-response-hook . (lambda () (goto-char (point-max)))))
+  :hook (gptel-post-response-functions . (lambda (&rest _) (goto-char (point-max)))))
 
 (use-package gptel-fn-complete
   :preface
@@ -3858,7 +3899,9 @@ TITLE defaults to the filename, LEVEL to one below current heading."
   (setq copilot-max-char 300000)
   (setq copilot-indent-offset-warning-disable t)
   :config
-  (delq 'company-preview-if-just-one-frontend company-frontends)
+  (with-eval-after-load 'company
+    (setq company-frontends
+          (delq 'company-preview-if-just-one-frontend company-frontends)))
 
   (defvar rk/copilot-manual-mode nil
     "When non-nil, only show completions when manually triggered.")
@@ -3927,10 +3970,6 @@ TITLE defaults to the filename, LEVEL to one below current heading."
 (use-package js2-mode
   :mode "\\.js\\'")
 
-(use-package gud
-  :straight (:type built-in)
-  :commands gud-gdb)
-
 (use-package company
   :straight (company
              :includes (company-yasnippet company-capf))
@@ -3941,7 +3980,7 @@ TITLE defaults to the filename, LEVEL to one below current heading."
   (setq company-selection-wrap-around t)
   :config
   (add-to-list 'company-backends '(:with company-yasnippet company-capf))
-  (company-tng-configure-default)
+  (company-tng-mode 1)
   :hook (after-init-hook . global-company-mode))
 
 (use-package gptel-mcp
@@ -3950,6 +3989,71 @@ TITLE defaults to the filename, LEVEL to one below current heading."
   :after (gptel mcp)
   :bind (:map gptel-mode-map
               ("C-c m" . gptel-mcp-dispatch)))
+
+(use-package vterm
+  :commands (vterm vterm-other-window)
+  :init
+  (setq vterm-kill-buffer-on-exit t)
+  (setq vterm-max-scrollback 10000)
+  (setq claude-code-terminal-backend 'vterm)
+  :config
+  (setq shell-file-name "/bin/bash")
+  (setenv "SHELL" shell-file-name)
+  (setq term-prompt-regexp "^[^#$%>\n]*[#$%>] *")
+
+  (add-to-list 'display-buffer-alist
+               '("vterm-subterminal.*"
+                 (display-buffer-reuse-window
+                  display-buffer-in-side-window)
+                 (side . bottom)
+                 (reusable-frames . visible)
+                 (window-height . 0.33)))
+
+  (defun my-toggle-vterm-subterminal ()
+    "Toggle a vterm side window at the bottom."
+    (interactive)
+    (let ((vterm-window
+           (seq-find
+            (lambda (window)
+              (string-match-p
+               "vterm-subterminal"
+               (buffer-name (window-buffer window))))
+            (window-list))))
+      (if vterm-window
+          (if (eq (get-buffer-window (current-buffer)) vterm-window)
+              (kill-buffer (current-buffer))
+            (select-window vterm-window))
+        (vterm-other-window "vterm-subterminal"))))
+
+  (defun my-vterm-get-pwd ()
+    "Get the current working directory of the vterm process."
+    (if vterm--process
+        (file-truename (format "/proc/%d/cwd" (process-id vterm--process)))
+      default-directory))
+
+  (defun my-vterm-dired-other-window ()
+    "Open dired in vterm pwd in other window."
+    (interactive)
+    (dired-other-window (my-vterm-get-pwd)))
+
+  (defun my-vterm-dired-replace ()
+    "Replace vterm with dired in the current directory."
+    (interactive)
+    (let ((pwd (my-vterm-get-pwd)))
+      (kill-process vterm--process)
+      (dired pwd))))
+
+(use-package gud
+  :straight (:type built-in)
+  :commands gud-gdb)
+
+(use-package claude-code-ide
+  :straight (:type git
+                   :host github
+                   :repo "manzaltu/claude-code-ide.el")
+  :bind ("C-c C-'" . claude-code-ide-menu)
+  :config
+  (claude-code-ide-emacs-tools-setup))
 
 (use-package mcp
   :straight (mcp :includes (mcp-hub))
@@ -3989,14 +4093,6 @@ TITLE defaults to the filename, LEVEL to one below current heading."
                                ,(auth-source-pick-first-password
                                  :host "graphlit.io" :user "jwt-secret")))))))
 
-(use-package claude-code-ide
-  :straight (:type git
-                   :host github
-                   :repo "manzaltu/claude-code-ide.el")
-  :bind ("C-c C-'" . claude-code-ide-menu)
-  :config
-  (claude-code-ide-emacs-tools-setup))
-
 (use-package elisa
   :commands (elisa-chat elisa-download-web elisa-download-wiki)
   :config
@@ -4017,55 +4113,8 @@ TITLE defaults to the filename, LEVEL to one below current heading."
           (make-llm-openai
            :embedding-model "text-embedding-3-small")))
 
-(use-package tldr
-  :init
-  (setq tldr-directory-path (expand-file-name "tldr/" user-cache-directory))
-  (setq tldr-saved-zip-path (expand-file-name "tldr-source.zip" user-cache-directory))
-  :bind ("C-c s-t" . tldr-find-page))
-
-(use-package server
-  :straight (:type built-in)
-  :config
-  (unless (server-running-p)
-    (server-start))
-  (global-unset-key (kbd "C-x C-c"))
-  (global-unset-key (kbd "C-x C-z")))
-
-(use-package dbus
-  :straight (:type built-in)
-  :when (getenv "DESKTOP_AUTOSTART_ID")
-  :config
-  (defvar my-gnome-client-path nil
-    "D-Bus client path for GNOME SessionManager registration.")
-
-  (defun my-gnome-register-signals (client-path)
-    "Register for QueryEndSession and EndSession signals from GNOME SessionManager."
-    (setq my-gnome-client-path client-path)
-    (let ((end-session-response
-           (lambda (&optional _arg)
-             (dbus-call-method-asynchronously
-              :session "org.gnome.SessionManager"
-              my-gnome-client-path
-              "org.gnome.SessionManager.ClientPrivate"
-              "EndSessionResponse" nil t ""))))
-      (dbus-register-signal
-       :session "org.gnome.SessionManager" my-gnome-client-path
-       "org.gnome.SessionManager.ClientPrivate" "QueryEndSession"
-       end-session-response)
-      (dbus-register-signal
-       :session "org.gnome.SessionManager" my-gnome-client-path
-       "org.gnome.SessionManager.ClientPrivate" "EndSession"
-       (lambda (_arg)
-         (add-hook 'kill-emacs-hook end-session-response t)
-         (kill-emacs)))))
-
-  (dbus-call-method-asynchronously
-   :session
-   "org.gnome.SessionManager" "/org/gnome/SessionManager" "org.gnome.SessionManager"
-   "RegisterClient" #'my-gnome-register-signals "Emacs server"
-   (getenv "DESKTOP_AUTOSTART_ID")))
-
-(mapc #'disable-theme custom-enabled-themes)
+(add-to-list 'global-mode-string
+             `(t (,(user-login-name) "@" system-name " ")) t)
 
 (use-package modus-themes
   :init
@@ -4074,7 +4123,6 @@ TITLE defaults to the filename, LEVEL to one below current heading."
   (setq modus-themes-bold-constructs t)
   (setq modus-themes-variable-pitch-ui t)
   (setq modus-themes-mixed-fonts t)
-  (setq modus-themes-prompts '(bold))
   (setq modus-themes-headings '((1 . (light variable-pitch 1.3))
                                 (2 . (rainbow background 1.2))
                                 (3 . (rainbow bold 1.1))
@@ -4097,6 +4145,9 @@ TITLE defaults to the filename, LEVEL to one below current heading."
   (setq modus-vivendi-palette-overrides
         '((bg-inactive "#202020")))
   :config
+  ;; --- theme setup
+  (mapc #'disable-theme custom-enabled-themes)
+
   (defun my-modus-themes-fill-column-face ()
     "Make fill-column-indicator visible as a green line."
     (set-face-attribute 'fill-column-indicator nil
@@ -4119,12 +4170,12 @@ TITLE defaults to the filename, LEVEL to one below current heading."
   (spacious-padding-subtle-mode-line t)
   (spacious-padding-widths
    '(:internal-border-width 20
-     :header-line-width 4
-     :mode-line-width 10
-     :tab-width 8
-     :right-divider-width 20
-     :scroll-bar-width 4
-     :fringe-width 8))
+                            :header-line-width 4
+                            :mode-line-width 10
+                            :tab-width 8
+                            :right-divider-width 20
+                            :scroll-bar-width 4
+                            :fringe-width 8))
   :config
   (spacious-padding-mode 1))
 
@@ -4147,14 +4198,9 @@ TITLE defaults to the filename, LEVEL to one below current heading."
       :default-height 140
       :variable-pitch-height 1.3)))
   :config
-  (fontaine-set-preset 'regular)
-  :hook (enable-theme-functions-hook . fontaine-apply-current-preset))
+  (fontaine-set-preset 'regular))
 
-(add-hook 'org-mode-hook #'variable-pitch-mode)
-
-(add-to-list 'global-mode-string
-             `(t (,(user-login-name) "@" system-name " ")) t)
-
+;; --- post-startup GC reset (belongs in the Reset GC section)
 (defun my-startup-reset-gc ()
   "Restore GC settings after startup and GC when losing focus."
   (setq gc-cons-threshold (* 128 1024 1024)
