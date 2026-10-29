@@ -16,12 +16,14 @@ list anywhere else — extend this table instead.
 | `\b\d{5}(-\d{4})?\b` (in address contexts) | `00000` | ZIP code — review hits manually, may be false-positive in code |
 | Real first/last name strings in `user-full-name`, `\author{}`, `#+AUTHOR:` | `Your Name` | Already placeholder in current files — verify no regression |
 | Hardcoded street addresses | `123 Example St` | None known currently |
+| `~/[^\s"')\]]+`, `file:[^\s\]]+` | generic folder, e.g. `~/projects/` | **Review rule, not auto-redact.** List every distinct path in the handoff. Redact components naming a person, employer, patient, client, or private project. The publisher treats a path the handoff lists as "kept" as cleared. |
 
 ## Allowed (do NOT redact)
 
 - `your-email@example.com`, `Your Name`, `Your Institution`, `your-github-user` — these are the placeholders themselves.
 - `git@github.com` (the SSH host) — not PII; only the username after `:` matters.
 - `(user-login-name)`, `(system-name)` — Elisp expressions that resolve at runtime; safe.
+- Generic `~/` folders: `~/.emacs.d/...`, `~/.local/...`, `~/Dropbox/` with generic subfolders (`org/`, `markdown/`, `projects/`, `notes/`, `images/`, ...), `~/Downloads/`, `~/projects/`, `~/reveal.js/`, `~/build-repos/`.
 - Strings inside `.gitignore`'d files (`.env`, `secrets.el`, `private.el`, `local.el`, `.claude/settings.local.json`, `.claude/state/`) — never published.
 
 ## When a hit is ambiguous

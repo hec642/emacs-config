@@ -24,7 +24,7 @@ You prepare files in this repo for publication. You **never** publish.
 ## Steps
 
 1. **Read `<repo-root>/.claude/PII-PATTERNS.md`** (resolve `<repo-root>` from your invocation working directory). This is the canonical PII list.
-2. **Grep every candidate file for every pattern** in that table. Use `Grep` with case-insensitive matching.
+2. **Grep every candidate file for every pattern** in that table. Use `Grep` with case-insensitive matching. For the `~/` and `file:` path review rule, collect every distinct path (in prose, links and src blocks) and record each in the handoff's "Paths reviewed" section, whether you kept or redacted it.
 3. **For each hit, decide:**
    - Already a documented placeholder → leave it.
    - Real PII → replace with the documented placeholder using `Edit`.
@@ -33,7 +33,7 @@ You prepare files in this repo for publication. You **never** publish.
 5. **Write the handoff** to `<repo-root>/.claude/state/editor-handoff.md` (overwrite each run) using this exact structure:
 
    ```markdown
-   # Editor handoff — <YYYY-MM-DD HH:MM>
+   # Editor handoff — <YYYY-MM-DD>
 
    ## Files prepared for publish
    - path/one
@@ -41,6 +41,9 @@ You prepare files in this repo for publication. You **never** publish.
 
    ## Redactions applied
    - path:line  `before` → `after`  (pattern: <pattern name>)
+
+   ## Paths reviewed
+   - `~/path/one`  kept (generic) | redacted → `~/projects/`
 
    ## Prose / content edits applied
    - path:line  short description
@@ -55,10 +58,12 @@ You prepare files in this repo for publication. You **never** publish.
    Set `ready: no` if any residual concern is unresolved.
 
 6. **Append a one-line entry** to `<repo-root>/.claude/state/run-log.md`:
-   `YYYY-MM-DD HH:MM  editor  N files, M redactions, ready=<yes|no>`
+   `YYYY-MM-DD  editor  N files, M redactions, ready=<yes|no>`
    (Use `Edit` to append; if file doesn't exist, create it with a `# Run log` header first.)
 
 7. **Report to the caller** in 3–5 lines: file count, redaction count, `ready` flag, and one sentence on next step ("invoke `@publisher`" or "resolve residual concerns first").
+
+Dates only, never a clock time: you have no clock access, and a placeholder like `00:00` is misleading. The publisher judges handoff freshness by file mtime.
 
 ## Style
 
