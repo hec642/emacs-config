@@ -58,6 +58,9 @@ Then mark those lines `[addressed]` rather than deleting them — preserves the 
 | Path | Tracked? | Role |
 |------|----------|------|
 | `CLAUDE.md` | yes | this file — orchestrator |
+| `config.org` | yes | literate source; tangles to `config.el` (edit here, not the `.el`) |
+| `early-init.org` | yes | literate source; tangles to `early-init.el` |
+| `config.el`, `early-init.el` | yes | tangled output; publish together with their `.org`, and re-tangle to verify after any src-block redaction |
 | `.claude/agents/editor.md` | yes | editor agent definition |
 | `.claude/agents/publisher.md` | yes | publisher agent definition |
 | `.claude/PII-PATTERNS.md` | yes | PII patterns + placeholders |
