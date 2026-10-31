@@ -4167,8 +4167,8 @@ With prefix argument 64, use ISO datetime format."
   (yas-snippet-revival nil)
   (yas-wrap-around-region nil)
   (yas-verbosity 0)
-  :config
-  (add-to-list 'yas-snippet-dirs "~/.emacs.d/snippets/")
+  ;; ~/.emacs.d/snippets is yasnippet's default user dir; adding it again
+  ;; loads every snippet twice and triggers "same identity" warnings.
   :bind (:map yas-minor-mode-map
               ("TAB"     . nil)
               ("<tab>"   . nil)
